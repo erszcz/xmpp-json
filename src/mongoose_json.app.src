@@ -1,0 +1,14 @@
+{application, mongoose_json,
+ [
+  {description, "An Erlang mongoose_json library"},
+  {vsn, "1"},
+  {modules, [
+             mongoose_json
+            ]},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib
+                 ]},
+  {env, []}
+ ]}.
