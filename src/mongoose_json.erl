@@ -1,73 +1,115 @@
 -module(mongoose_json).
 -include_lib("exml/include/exml.hrl").
 
-%% Encoder/decoder of xmlel()s to/from BSON
+%% Encoder/decoder of xmlel()s to/from JSON
 -export([xmlel_to_json/1,
          json_to_xmlel/1]).
 
+-type xmlel() :: #xmlel{}.
+
 %%
-%% Encoder/decoder of xmlel()s to/from BSON
+%% Encoder/decoder of xmlel()s to/from JSON
 %%
 
 %% El == json_to_xmlel(xmlel_to_json(El)) must hold.
+%%
+%% We start with a piece of XML:
+%%
+%% <iq from='localhost'
+%%     to='alice@localhost/escalus-default-resource'
+%%     type='result'>
+%%   <query xmlns='cdk:xmpp:frequent-contacts'/>
+%% </iq>
+%%
+%% Let's get an `xmlel()` by parsing the XML:
+%%
+%% {ok, El} = exml:parse(<<"<iq from='localhost'"
+%%                         "    to='alice@localhost/escalus-default-resource'"
+%%                         "    type='result'>"
+%%                         "  <query xmlns='cdk:xmpp:frequent-contacts'/>"
+%%                         "</iq>">>).
+%%
+%% `El` is now:
+%%
+%% {xmlel,<<"iq">>,
+%%        [{<<"from">>,<<"localhost">>},
+%%         {<<"to">>,<<"alice@localhost/escalus-default-resource">>},
+%%         {<<"type">>,<<"result">>}],
+%%        [{xmlcdata,<<"  ">>},
+%%         {xmlel,<<"query">>,
+%%                [{<<"xmlns">>,<<"cdk:xmpp:frequent-contacts">>}],
+%%                []}]}
+%%
+%% `mongoose_json:xmlel_to_json(El)` is an iolist() representing
+%% the resulting JSON:
+%%
+%% {"name"    : "iq",
+%%  "attrs"   : {"from": "localhost",
+%%               "to"  : "alice@localhost/escalus-default-resource",
+%%               "type": "result"},
+%%  "children": [{"cdata": "  "},
+%%               {"name"    : "query",
+%%                "attrs"   : {"xmlns":"cdk:xmpp:frequent-contacts"},
+%%                "children": []}]}
+%%
+%% The intermediate struct passed to MochiJson2 (i.e. result
+%% of `mongoose_json:xmlel_to_mochistruct(El)`) is:
+%%
+%% {struct,[{<<"name">>,<<"iq">>},
+%%          {<<"attrs">>,
+%%           {struct,[{<<"from">>,<<"localhost">>},
+%%                    {<<"to">>,<<"alice@localhost/escalus-default-resource">>},
+%%                    {<<"type">>,<<"result">>}]}},
+%%          {<<"children">>,
+%%           [{struct,[{<<"cdata">>,<<"  ">>}]},
+%%            {struct,[{<<"name">>,<<"query">>},
+%%                     {<<"attrs">>,
+%%                      {struct,[{<<"xmlns">>,<<"cdk:xmpp:frequent-contacts">>}]}},
+%%                     {<<"children">>,[]}]}]}]}
+%%
+%% Given `Data = mongoose_json:xmlel_to_json(El)` to get back the `xmlel()`
+%% we have to do `mongoose_json:json_to_xmlel(Data)`:
+%%
+%% {xmlel,<<"iq">>,
+%%        [{<<"from">>,<<"localhost">>},
+%%         {<<"to">>,<<"alice@localhost/escalus-default-resource">>},
+%%         {<<"type">>,<<"result">>}],
+%%        [{xmlcdata,<<"  ">>},
+%%         {xmlel,<<"query">>,
+%%                [{<<"xmlns">>,<<"cdk:xmpp:frequent-contacts">>}],
+%%                []}]}
+%%
+%% Finally, we got `El == json_to_xmlel(xmlel_to_json(El))`.
 
-xmlel_to_json(#xmlel{name = Name, attrs = [], children = []}) ->
-    {name, bson:utf8(Name)};
-xmlel_to_json(#xmlel{name = Name, attrs = Attrs, children = []}) ->
-    {name, bson:utf8(Name),
-     attrs, attrs_to_bson(Attrs)};
-xmlel_to_json(#xmlel{name = Name, attrs = [], children = Children}) ->
-    {name, bson:utf8(Name),
-     children, [xmlel_to_json(C) || C <- Children]};
-xmlel_to_json(#xmlel{name = Name, attrs = Attrs, children = Children}) ->
-    {name, bson:utf8(Name),
-     attrs, attrs_to_bson(Attrs),
-     children, [xmlel_to_json(C) || C <- Children]};
-xmlel_to_json(#xmlcdata{content = CData}) ->
-    {cdata, bson:utf8(CData)}.
+-spec xmlel_to_json(xmlel()) -> iolist().
+xmlel_to_json(#xmlel{} = XML) -> mochijson2:encode(xmlel_to_mochistruct(XML)).
 
-json_to_xmlel({name, Name}) ->
-    #xmlel{name = Name};
-json_to_xmlel({name, Name, attrs, BSONAttrs}) ->
-    #xmlel{name = Name,
-           attrs = bson_to_attrs(BSONAttrs)};
-json_to_xmlel({name, Name, children, BSONChildren}) ->
-    #xmlel{name = Name,
-           children = [json_to_xmlel(BC) || BC <- BSONChildren]};
-json_to_xmlel({name, Name, attrs, BSONAttrs, children, BSONChildren}) ->
-    #xmlel{name = Name,
-           attrs = bson_to_attrs(BSONAttrs),
-           children = [json_to_xmlel(BC) || BC <- BSONChildren]};
-json_to_xmlel({cdata, CData}) ->
-    #xmlcdata{content = CData}.
+-spec json_to_xmlel(iolist()) -> xmlel().
+json_to_xmlel(Data) -> mochistruct_to_xmlel(mochijson2:decode(Data)).
 
 %%
 %% Encoder/decoder helpers
 %%
 
-%% Ok, this is a bit problematic on BSON side.
-%% Basically, the keys in a BSON object are atoms,
-%% so we don't want to build objects from XML attribute lists,
-%% because they may contain infinite possible attribute names,
-%% while the number of existing atoms in BEAM is always finite.
-%% Hence, in order not to cause a crash,
-%% we encode atoms as a BSON array of BSON two-element arrays ( aka pairs ;).
-%% For:
-%%
-%%   #xmlel{name = <<"elem">>,
-%%          attrs = [{<<"with">>, <<"attr">>}]},
-%%
-%% We get (lookup with `db.xml.find()`) in mongo console:
-%%
-%%   { "_id" : ObjectId("53725bbfbf947d0d92000002"),
-%%     "name" : "elem",
-%%     "attrs" : [ [ "with", "attr" ] ],
-%%     "children" :  }
-attrs_to_bson(Attrs) ->
-    [attr_to_bson(A) || A <- Attrs].
+xmlel_to_mochistruct({xmlcdata, CData}) -> {struct, [{<<"cdata">>, CData}]};
+xmlel_to_mochistruct(#xmlel{name = Name,
+                            attrs = Attrs,
+                            children = Children}) ->
+    {struct, [{<<"name">>, Name},
+              {<<"attrs">>, attrs_to_mochistruct(Attrs)},
+              {<<"children">>, [ xmlel_to_mochistruct(El) || El <- Children ]}]}.
 
-attr_to_bson({Name, Value}) ->
-    [bson:utf8(Name), bson:utf8(Value)].
+attrs_to_mochistruct(Attrs) ->
+    {struct, Attrs}.
 
-bson_to_attrs(BSONAttrs) ->
-    [erlang:list_to_tuple(Pair) || Pair <- BSONAttrs].
+mochistruct_to_xmlel({struct, [{<<"cdata">>, CData}]}) -> {xmlcdata, CData};
+mochistruct_to_xmlel({struct, Prefabs}) ->
+    [{<<"attrs">>, MochiAttrs},
+     {<<"children">>, Children},
+     {<<"name">>, Name}] = lists:sort(Prefabs),
+    #xmlel{name = Name,
+           attrs = mochistruct_to_attrs(MochiAttrs),
+           children = [ mochistruct_to_xmlel(MochiStruct)
+                        || MochiStruct <- Children ]}.
+
+mochistruct_to_attrs({struct, Attrs}) -> Attrs.
