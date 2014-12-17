@@ -5,6 +5,10 @@
 -export([xmlel_to_json/1,
          json_to_xmlel/1]).
 
+%% Test-only exports.
+-export([xmlel_to_mochistruct/1,
+         mochistruct_to_xmlel/1]).
+
 -type xmlel() :: #xmlel{}.
 
 %%
