@@ -18,7 +18,10 @@ groups() ->
     [{exml_bson, [identity_no_attrs_no_children_test,
                   identity_no_attrs_with_children_test,
                   identity_with_attrs_no_children_test,
-                  identity_with_attrs_with_children_test]},
+                  identity_with_attrs_with_children_test,
+                  xmlel_from_json_with_no_attrs_no_children,
+                  xmlel_from_json_with_no_attrs,
+                  xmlel_from_json_with_no_children]},
      {properties, [identity,
                    mixed_identity]}].
 
@@ -43,6 +46,24 @@ identity_test(Attrs, Children) ->
     Dec = fun mongoose_json:json_to_xmlel/1,
     El = static_xmlel(Attrs, Children),
     ?ae(El, Dec(Enc(El))).
+
+xmlel_from_json_with_no_attrs_no_children(_) ->
+    JSON = <<"{\"name\": \"query\"}">>,
+    ?ae(#xmlel{name = <<"query">>}, mongoose_json:json_to_xmlel(JSON)).
+
+xmlel_from_json_with_no_attrs(_) ->
+    JSON = <<"{\"name\"    : \"iq\",
+               \"children\": [{\"name\": \"query\"}]}">>,
+    ?ae(#xmlel{name = <<"iq">>,
+               children = [#xmlel{name = <<"query">>}]},
+        mongoose_json:json_to_xmlel(JSON)).
+
+xmlel_from_json_with_no_children(_) ->
+    JSON = <<"{\"name\" : \"query\",
+               \"attrs\": {\"xmlns\":\"cdk:xmpp:frequent-contacts\"}}">>,
+    ?ae(#xmlel{name = <<"query">>,
+               attrs = [{<<"xmlns">>, <<"cdk:xmpp:frequent-contacts">>}]},
+        mongoose_json:json_to_xmlel(JSON)).
 
 identity(_) ->
     property(identity, ?FORALL(El, xmlel(), dec_enc(El))).
