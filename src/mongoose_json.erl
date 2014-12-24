@@ -106,7 +106,29 @@ xmlel_to_mochistruct(#xmlel{name = Name,
 attrs_to_mochistruct(Attrs) ->
     {struct, Attrs}.
 
-mochistruct_to_xmlel({struct, [{<<"cdata">>, CData}]}) -> {xmlcdata, CData};
+%% Just CData.
+mochistruct_to_xmlel({struct, [{<<"cdata">>, CData}]}) ->
+    {xmlcdata, CData};
+
+%% No attrs, no children.
+mochistruct_to_xmlel({struct, [{<<"name">>, Name}]}) ->
+    xmlel(Name, [], []);
+
+%% Attrs, but no children.
+mochistruct_to_xmlel({struct, [{<<"name">>, Name}, {<<"attrs">>, Attrs}]}) ->
+    xmlel(Name, mochistruct_to_attrs(Attrs), []);
+mochistruct_to_xmlel({struct, [{<<"attrs">>, Attrs}, {<<"name">>, Name}]}) ->
+    xmlel(Name, mochistruct_to_attrs(Attrs), []);
+
+%% Children, but no attrs.
+mochistruct_to_xmlel({struct, [{<<"name">>, Name}, {<<"children">>, Children}]}) ->
+    xmlel(Name, [], [ mochistruct_to_xmlel(MochiStruct)
+                      || MochiStruct <- Children ]);
+mochistruct_to_xmlel({struct, [{<<"children">>, Children}, {<<"name">>, Name}]}) ->
+    xmlel(Name, [], [ mochistruct_to_xmlel(MochiStruct)
+                      || MochiStruct <- Children ]);
+
+%% All fields present.
 mochistruct_to_xmlel({struct, Prefabs}) ->
     [{<<"attrs">>, MochiAttrs},
      {<<"children">>, Children},
@@ -115,5 +137,10 @@ mochistruct_to_xmlel({struct, Prefabs}) ->
            attrs = mochistruct_to_attrs(MochiAttrs),
            children = [ mochistruct_to_xmlel(MochiStruct)
                         || MochiStruct <- Children ]}.
+
+xmlel(Name, Attrs, Children) ->
+    #xmlel{name = Name,
+           attrs = Attrs,
+           children = Children}.
 
 mochistruct_to_attrs({struct, Attrs}) -> Attrs.
