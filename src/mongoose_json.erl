@@ -99,12 +99,26 @@ xmlel_to_mochistruct({xmlcdata, CData}) -> {struct, [{<<"cdata">>, CData}]};
 xmlel_to_mochistruct(#xmlel{name = Name,
                             attrs = Attrs,
                             children = Children}) ->
-    {struct, [{<<"name">>, Name},
-              {<<"attrs">>, attrs_to_mochistruct(Attrs)},
-              {<<"children">>, [ xmlel_to_mochistruct(El) || El <- Children ]}]}.
+    xmlel_to_mochistruct(Name,
+                         attrs_to_mochistruct(Attrs),
+                         [ xmlel_to_mochistruct(El) || El <- Children ]).
 
+attrs_to_mochistruct([]) -> [];
 attrs_to_mochistruct(Attrs) ->
     {struct, Attrs}.
+
+xmlel_to_mochistruct(Name, [], []) ->
+    {struct, [{<<"name">>, Name}]};
+xmlel_to_mochistruct(Name, Attrs, []) ->
+    {struct, [{<<"name">>, Name},
+              {<<"attrs">>, Attrs}]};
+xmlel_to_mochistruct(Name, [], Children) ->
+    {struct, [{<<"name">>, Name},
+              {<<"children">>, Children}]};
+xmlel_to_mochistruct(Name, Attrs, Children) ->
+    {struct, [{<<"name">>, Name},
+              {<<"attrs">>, Attrs},
+              {<<"children">>,  Children}]}.
 
 %% Just CData.
 mochistruct_to_xmlel({struct, [{<<"cdata">>, CData}]}) ->
