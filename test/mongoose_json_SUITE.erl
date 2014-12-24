@@ -11,11 +11,11 @@
 -define(ae(E, A), ?assertEqual(E, A)).
 
 all() ->
-    [{group, exml_bson},
+    [{group, exml_json},
      {group, properties}].
 
 groups() ->
-    [{exml_bson, [identity_no_attrs_no_children_test,
+    [{exml_json, [identity_no_attrs_no_children_test,
                   identity_no_attrs_with_children_test,
                   identity_with_attrs_no_children_test,
                   identity_with_attrs_with_children_test,
